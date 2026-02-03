@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Linear Regression – Temperature vs Ice Cream Sales</title>
+
+<!-- TensorFlow.js -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.min.js"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<style>
+body{
+  font-family: Arial, sans-serif;
+  background:#eef1f6;
+  display:flex;
+  justify-content:center;
+  padding:30px;
+}
+.container{
+  background:white;
+  width:720px;
+  padding:25px;
+  border-radius:12px;
+  box-shadow:0 8px 20px rgba(0,0,0,0.15);
+}
+h2{text-align:center;margin-bottom:15px;}
+input,button{
+  padding:8px;
+  margin:6px 0;
+}
+button{
+  background:#0069d9;
+  color:white;
+  border:none;
+  border-radius:5px;
+  cursor:pointer;
+}
+button:hover{background:#004fa3;}
+.output{font-weight:bold;margin-top:10px;}
+canvas{margin-top:20px;}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h2>
+MLTL Practical 1<br>
+Linear Regression using Synthetic Dataset<br>
+Temperature vs Ice Cream Sales
+</h2>
+
+<!-- DATASET -->
+<input type="file" id="file" accept=".txt">
+<br>
+
+<!-- LEARNING RATE -->
+<input type="number" id="lr" step="0.01" value="0.01">
+<button onclick="trainModel()">Train Model</button>
+
+<div class="output" id="status"></div>
+
+<hr>
+
+<!-- PREDICTION -->
+<input type="number" id="temp" placeholder="Enter Temperature (°C)">
+<button onclick="predictSales()">Predict</button>
+
+<div class="output" id="result"></div>
+
+<canvas id="chart"></canvas>
+
+</div>
+
+<script>
+let model, X=[], Y=[], chart;
+let xmin,xmax,ymin,ymax;
+
+// ================= TRAIN MODEL =================
+function trainModel(){
+  const file=document.getElementById("file").files[0];
+  if(!file) return alert("Please upload dataset file");
+
+  const lr=parseFloat(document.getElementById("lr").value);
+
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const lines=e.target.result.trim().split("\n");
+    X=[]; Y=[];
+    lines.forEach(line=>{
+      const [a,b]=line.trim().split(/\s+/).map(Number);
+      if(!isNaN(a)&&!isNaN(b)){ X.push(a); Y.push(b); }
+    });
+
+    xmin=Math.min(...X); xmax=Math.max(...X);
+    ymin=Math.min(...Y); ymax=Math.max(...Y);
+
+    const Xn=X.map(v=>(v-xmin)/(xmax-xmin));
+    const Yn=Y.map(v=>(v-ymin)/(ymax-ymin));
+
+    model=tf.sequential();
+    model.add(tf.layers.dense({units:1,inputShape:[1]}));
+    model.compile({
+      optimizer: tf.train.sgd(lr),
+      loss: "meanSquaredError"
+    });
+
+    model.fit(tf.tensor2d(Xn,[Xn.length,1]),tf.tensor1d(Yn),{
+      epochs:250,
+      callbacks:{
+        onTrainEnd:()=>{
+          const predsN=model.predict(
+            tf.tensor2d(Xn,[Xn.length,1])
+          ).dataSync();
+
+          const preds=[...predsN].map(
+            v=>v*(ymax-ymin)+ymin
+          );
+
+          drawGraph(preds);
+          document.getElementById("status").innerText=
+            `Model trained successfully (Learning Rate = ${lr})`;
+        }
+      }
+    });
+  };
+  reader.readAsText(file);
+}
+
+// ================= PREDICT =================
+function predictSales(){
+  if(!model) return alert("Train the model first");
+
+  const t=parseFloat(document.getElementById("temp").value);
+  if(isNaN(t)) return alert("Enter valid temperature");
+
+  const tn=(t-xmin)/(xmax-xmin);
+  const yn=model.predict(tf.tensor2d([tn],[1,1])).dataSync()[0];
+  const y=yn*(ymax-ymin)+ymin;
+
+  document.getElementById("result").innerText=
+    `Predicted Ice Cream Sales: ${y.toFixed(2)} units`;
+
+  // ADD PREDICTED POINT
+  chart.data.datasets.push({
+    label:"Predicted Value",
+    data:[{x:t,y:y}],
+    backgroundColor:"green",
+    pointRadius:7,
+    showLine:false
+  });
+  chart.update();
+}
+
+// ================= GRAPH =================
+function drawGraph(preds){
+  if(chart) chart.destroy();
+
+  chart=new Chart(
+    document.getElementById("chart"),
+    {
+      type:"scatter",
+      data:{
+        datasets:[
+          {
+            label:"Actual Data",
+            data:X.map((x,i)=>({x,y:Y[i]})),
+            backgroundColor:"blue"
+          },
+          {
+            label:"Regression Line",
+            data:X.map((x,i)=>({x,y:preds[i]})),
+            type:"line",
+            borderColor:"red",
+            fill:false
+          }
+        ]
+      },
+      options:{
+        scales:{
+          x:{title:{display:true,text:"Temperature (°C)"}},
+          y:{title:{display:true,text:"Ice Cream Sales"}}
+        }
+      }
+    }
+  );
+}
+</script>
+
+</body>
+</html>
